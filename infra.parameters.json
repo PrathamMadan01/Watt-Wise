@@ -1,0 +1,14 @@
+{
+  "$schema": "...",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": { "value": "eastus" },
+    "eventHubNamespaceName": { "value": "telemetry-eh-ns" },
+    "eventHubName": { "value": "telemetry-events" },
+    "storageAccountName": { "value": "telemetrystorage001" },
+    "functionAppName": { "value": "telemetry-funcapp" },
+    "cosmosAccountName": { "value": "telemetry-cosmos" },
+    "cosmosDatabaseName": { "value": "telemetrydb" },
+    "cosmosContainerName": { "value": "events" }
+  }
+}
