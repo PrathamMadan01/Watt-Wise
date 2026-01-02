@@ -1,1 +1,1 @@
-# Watt Wise
+# Watt-Wise
