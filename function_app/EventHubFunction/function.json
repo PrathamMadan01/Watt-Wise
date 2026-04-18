@@ -1,0 +1,15 @@
+{
+  "scriptFile": "__init__.py",
+  "bindings": [
+    {
+      "name": "events",
+      "type": "eventHubTrigger",
+      "direction": "in",
+      "eventHubName": "telemetryhub",
+      "connection": "EVENTHUB_CONNECTION",
+      "cardinality": "many",
+      "consumerGroup": "$Default"
+    }
+  ]
+}
+
