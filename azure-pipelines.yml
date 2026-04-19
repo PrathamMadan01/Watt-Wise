@@ -1,0 +1,25 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  imageName: 'wattwise-app'
+
+steps:
+- task: Docker@2
+  inputs:
+    containerRegistry: 'c6e0e18e-8b97-45d6-8b65-d59aa0cc3998'
+    repository: '$(imageName)'
+    command: 'buildAndPush'
+    Dockerfile: '**/Dockerfile'
+    tags: |
+      latest
+
+- task: AzureWebAppContainer@1
+  inputs:
+    azureSubscription: '2c9e2908-7d6f-4bd1-8932-73544f078443'
+    appName: 'ASP-WattWise-966b
+'
+    containers: 'wattwiseacr.azurecr.io/wattwise-app:latest'
