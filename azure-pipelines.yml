@@ -21,5 +21,4 @@ steps:
   inputs:
     azureSubscription: '2c9e2908-7d6f-4bd1-8932-73544f078443'
     appName: 'ASP-WattWise-966b'
-'
     containers: 'wattwiseacr.azurecr.io/wattwise-app:latest'
