@@ -12,13 +12,14 @@ on:
 
 env:
   PYTHON_VERSION: "3.10"
-  AZURE_FUNCTIONAPP_NAME: "telemetry-funcapp"       # Your Azure Function App name
-  FUNCTION_APP_PATH: "./function_app"                # Path to the function app code
-  DOCKER_IMAGE_NAME: "wattwise-app"                  # Docker image for Streamlit dashboard
+  AZURE_FUNCTIONAPP_NAME: "telemetry-funcapp"
+  FUNCTION_APP_PATH: "./function_app"
+  DOCKER_IMAGE_NAME: "wattwise-app"
 
 jobs:
   # ─────────────────────────────────────────────────
   # 1. Deploy Azure Function (EventHub → CosmosDB)
+  #    Uses 'az functionapp deploy' for Flex Consumption
   # ─────────────────────────────────────────────────
   deploy-function:
     name: "⚡ Deploy Azure Function"
@@ -48,16 +49,21 @@ jobs:
             -x ".venv/*" ".env" "app.py" "simulator.py" \
                "tempCodeRunnerFile.python" "__pycache__/*" ".vscode/*"
 
-      - name: "🚀 Deploy to Azure Functions"
-        uses: Azure/functions-action@v1
+      - name: "🔐 Azure Login"
+        uses: azure/login@v2
         with:
-          app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
-          package: function-app.zip
-          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
-          scm-do-build-during-deployment: true
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: "🚀 Deploy to Azure Functions (Flex Consumption)"
+        run: |
+          az functionapp deployment source config-zip \
+            --resource-group Watt-Wise \
+            --name ${{ env.AZURE_FUNCTIONAPP_NAME }} \
+            --src function-app.zip
 
   # ─────────────────────────────────────────────────
-  # 2. Build & Push Streamlit Dashboard Docker Image
+  # 2. Build & Push Docker Image + Deploy Dashboard
+  #    Builds locally on GitHub Actions, pushes to ACR
   # ─────────────────────────────────────────────────
   deploy-dashboard:
     name: "📊 Deploy Streamlit Dashboard"
@@ -76,15 +82,41 @@ jobs:
 
       - name: "🐳 Build & Push Docker image"
         run: |
-          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} .
-          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest .
+          docker build \
+            -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} \
+            -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest .
           docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest
 
-      - name: "🌐 Deploy to Azure Web App"
-        uses: azure/webapps-deploy@v2
+      - name: "🔐 Azure Login"
+        uses: azure/login@v2
         with:
-          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
-          images: "${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
-        env:
-          AZURE_WEBAPP_PUBLISH_PROFILE: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: "🌐 Deploy to Azure Container Instance"
+        run: |
+          # Delete existing container if it exists (idempotent)
+          az container delete \
+            --resource-group Watt-Wise \
+            --name wattwise-dashboard \
+            --yes 2>/dev/null || true
+
+          # Deploy new container
+          az container create \
+            --resource-group Watt-Wise \
+            --name wattwise-dashboard \
+            --image ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} \
+            --cpu 1 --memory 1.5 \
+            --registry-login-server ${{ secrets.ACR_LOGIN_SERVER }} \
+            --registry-username ${{ secrets.ACR_USERNAME }} \
+            --registry-password ${{ secrets.ACR_PASSWORD }} \
+            --dns-name-label wattwise-dashboard \
+            --ports 8501 \
+            --location malaysiawest \
+            --environment-variables \
+              COSMOS_URL=${{ secrets.COSMOS_URL }} \
+              COSMOS_KEY=${{ secrets.COSMOS_KEY }} \
+              DATABASE_NAME=${{ secrets.DATABASE_NAME }} \
+              CONTAINER_NAME=${{ secrets.CONTAINER_NAME }}
+
+          echo "🌐 Dashboard URL: http://wattwise-dashboard.malaysiawest.azurecontainer.io:8501"
