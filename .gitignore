@@ -48,3 +48,12 @@ __pycache__/
 __blobstorage__
 __queuestorage__
 __azurite_db*__.json
+
+# Large data files
+household_power_consumption/
+
+# Temp files
+tempCodeRunnerFile.*
+
+# NOTE: function_app/models/*.pkl files are intentionally tracked
+# They are required by the Streamlit dashboard at runtime

@@ -1,3 +1,6 @@
+# Root-level requirements for Docker build
+# This mirrors function_app/requirements.txt for the container
+
 # Azure SDKs
 azure-core==1.38.1
 azure-cosmos==4.14.6

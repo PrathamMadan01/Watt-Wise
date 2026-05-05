@@ -1,0 +1,90 @@
+# =============================================================================
+# WattWise — CD Pipeline
+# Deploys the Azure Function (EventHub → CosmosDB) and the Streamlit Dashboard
+# =============================================================================
+
+name: "CD — Deploy to Azure"
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.10"
+  AZURE_FUNCTIONAPP_NAME: "telemetry-funcapp"       # Your Azure Function App name
+  FUNCTION_APP_PATH: "./function_app"                # Path to the function app code
+  DOCKER_IMAGE_NAME: "wattwise-app"                  # Docker image for Streamlit dashboard
+
+jobs:
+  # ─────────────────────────────────────────────────
+  # 1. Deploy Azure Function (EventHub → CosmosDB)
+  # ─────────────────────────────────────────────────
+  deploy-function:
+    name: "⚡ Deploy Azure Function"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "📥 Checkout code"
+        uses: actions/checkout@v4
+
+      - name: "🐍 Set up Python ${{ env.PYTHON_VERSION }}"
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: "📦 Install function dependencies"
+        run: |
+          pushd "${{ env.FUNCTION_APP_PATH }}"
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt --target=".python_packages/lib/site-packages"
+          popd
+
+      - name: "📁 Package function app"
+        run: |
+          cd ${{ env.FUNCTION_APP_PATH }}
+          zip -r ../function-app.zip . \
+            -x ".venv/*" ".env" "app.py" "simulator.py" \
+               "tempCodeRunnerFile.python" "__pycache__/*" ".vscode/*"
+
+      - name: "🚀 Deploy to Azure Functions"
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+          package: function-app.zip
+          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+          scm-do-build-during-deployment: true
+
+  # ─────────────────────────────────────────────────
+  # 2. Build & Push Streamlit Dashboard Docker Image
+  # ─────────────────────────────────────────────────
+  deploy-dashboard:
+    name: "📊 Deploy Streamlit Dashboard"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: "📥 Checkout code"
+        uses: actions/checkout@v4
+
+      - name: "🔐 Login to Azure Container Registry"
+        uses: azure/docker-login@v1
+        with:
+          login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: "🐳 Build & Push Docker image"
+        run: |
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }} .
+          docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest .
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:latest
+
+      - name: "🌐 Deploy to Azure Web App"
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
+          images: "${{ secrets.ACR_LOGIN_SERVER }}/${{ env.DOCKER_IMAGE_NAME }}:${{ github.sha }}"
+        env:
+          AZURE_WEBAPP_PUBLISH_PROFILE: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}

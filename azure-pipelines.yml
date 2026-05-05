@@ -1,24 +1,71 @@
+# =============================================================================
+# WattWise — Azure DevOps Pipeline  
+# Build & deploy Streamlit dashboard via Docker → ACR → Azure Web App
+# =============================================================================
+
 trigger:
-- main
+  - main
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: "ubuntu-latest"
 
 variables:
-  imageName: 'wattwise-app'
+  imageName: "wattwise-app"
+  dockerRegistryServiceConnection: "WattWiseACR"  # Azure DevOps service connection name
+  containerRegistry: "wattwiseacr.azurecr.io"
+  azureSubscription: "WattWiseSubscription"        # Azure DevOps service connection name
+  webAppName: "wattwise-dashboard"
 
-steps:
-- task: Docker@2
-  inputs:
-    containerRegistry: 'c6e0e18e-8b97-45d6-8b65-d59aa0cc3998'
-    repository: '$(imageName)'
-    command: 'buildAndPush'
-    Dockerfile: '**/Dockerfile'
-    tags: |
-      latest
+stages:
+  # ─────────────────────────────────
+  # Stage 1: Build & Push Docker image
+  # ─────────────────────────────────
+  - stage: Build
+    displayName: "🐳 Build & Push"
+    jobs:
+      - job: BuildImage
+        displayName: "Build Docker Image"
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: "3.10"
+            displayName: "Set Python 3.10"
 
-- task: AzureWebAppContainer@1
-  inputs:
-    azureSubscription: '2c9e2908-7d6f-4bd1-8932-73544f078443'
-    appName: 'ASP-WattWise-966b'
-    containers: 'wattwiseacr.azurecr.io/wattwise-app:latest'
+          - script: |
+              pip install flake8
+              flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics \
+                --exclude=venv,.venv,.python_packages,__pycache__,node_modules
+            displayName: "🔎 Lint check"
+
+          - task: Docker@2
+            displayName: "🐳 Build & Push to ACR"
+            inputs:
+              containerRegistry: "$(dockerRegistryServiceConnection)"
+              repository: "$(imageName)"
+              command: "buildAndPush"
+              Dockerfile: "**/Dockerfile"
+              tags: |
+                $(Build.BuildId)
+                latest
+
+  # ─────────────────────────────────
+  # Stage 2: Deploy to Azure Web App
+  # ─────────────────────────────────
+  - stage: Deploy
+    displayName: "🚀 Deploy"
+    dependsOn: Build
+    condition: succeeded()
+    jobs:
+      - deployment: DeployDashboard
+        displayName: "Deploy to Azure Web App"
+        environment: "production"
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: AzureWebAppContainer@1
+                  displayName: "🌐 Deploy Dashboard"
+                  inputs:
+                    azureSubscription: "$(azureSubscription)"
+                    appName: "$(webAppName)"
+                    containers: "$(containerRegistry)/$(imageName):$(Build.BuildId)"
