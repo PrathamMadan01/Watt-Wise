@@ -1,0 +1,15 @@
+# Large files not needed by Vercel
+household_power_consumption/
+household_power_consumption.txt
+venv/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.git/
+.github/
+tests/
+Dockerfile
+azure-pipelines.yml
+train_model.py
+test.py

@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WattWise — Energy Monitoring Dashboard</title>
+    <meta name="description" content="Real-time energy monitoring platform with ML anomaly detection, powered by Azure cloud infrastructure.">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+
+    <style>
+        /* ─────────── Reset & Global ─────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg-primary:   #0a0d12;
+            --bg-card:      rgba(14, 17, 23, 0.85);
+            --bg-card-hover: rgba(22, 27, 34, 0.95);
+            --border-subtle: rgba(0, 194, 255, 0.12);
+            --border-hover:  rgba(0, 194, 255, 0.35);
+            --text-primary: #e8eaed;
+            --text-muted:   #8b8fa3;
+            --text-dim:     #555;
+            --accent-blue:  #00c2ff;
+            --accent-purple:#7b61ff;
+            --accent-red:   #ff5252;
+            --accent-green: #00c853;
+            --accent-yellow:#ffd600;
+            --radius:       16px;
+            --radius-sm:    12px;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ─────────── Layout ─────────── */
+        .app-wrapper {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        .sidebar {
+            width: 280px;
+            min-width: 280px;
+            background: linear-gradient(180deg, #0e1117 0%, #161b22 100%);
+            border-right: 1px solid var(--border-subtle);
+            padding: 32px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 32px 40px;
+            max-width: 1400px;
+            overflow-y: auto;
+        }
+
+        /* ─────────── Sidebar ─────────── */
+        .sidebar-logo { font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px; }
+        .sidebar-logo span {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+
+        .sidebar h3 {
+            font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 1.5px; color: var(--text-muted); margin-bottom: 8px;
+        }
+
+        .sidebar label {
+            display: block; font-size: 0.75rem; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; font-weight: 500;
+        }
+
+        .sidebar select, .sidebar input[type="range"] {
+            width: 100%; padding: 10px 14px; border-radius: var(--radius-sm);
+            border: 1px solid var(--border-subtle); background: rgba(0,0,0,0.4);
+            color: var(--text-primary); font-family: inherit; font-size: 0.85rem;
+            outline: none; transition: border-color 0.2s;
+        }
+        .sidebar select:focus, .sidebar input[type="range"]:focus {
+            border-color: var(--accent-blue);
+        }
+
+        .sidebar-footer {
+            margin-top: auto; text-align: center; font-size: 0.7rem; color: var(--text-dim);
+        }
+
+        /* ─────────── Header ─────────── */
+        .main-title {
+            font-size: 2.2rem; font-weight: 700; letter-spacing: -0.5px;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple), var(--accent-red));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .sub-caption {
+            color: var(--text-muted); font-size: 0.85rem; letter-spacing: 1.5px;
+            text-transform: uppercase; margin-top: 2px;
+        }
+
+        .divider {
+            height: 1px; background: var(--border-subtle); margin: 20px 0;
+        }
+
+        /* ─────────── Status Banner ─────────── */
+        .status-banner {
+            padding: 14px 24px; border-radius: var(--radius-sm);
+            font-weight: 600; font-size: 0.9rem; display: flex;
+            align-items: center; gap: 10px; margin-bottom: 8px;
+        }
+        .status-ok {
+            background: linear-gradient(135deg, rgba(0,200,83,0.1), rgba(0,200,83,0.04));
+            border: 1px solid rgba(0,200,83,0.3); color: var(--accent-green);
+        }
+        .status-alert {
+            background: linear-gradient(135deg, rgba(255,82,82,0.1), rgba(255,82,82,0.04));
+            border: 1px solid rgba(255,82,82,0.3); color: var(--accent-red);
+            animation: pulse-alert 2s infinite;
+        }
+        @keyframes pulse-alert { 0%,100%{opacity:1} 50%{opacity:0.7} }
+
+        /* ─────────── KPI Cards ─────────── */
+        .kpi-row {
+            display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-bottom: 8px;
+        }
+        .kpi-card {
+            background: linear-gradient(135deg, rgba(28,31,38,0.9), rgba(14,17,23,0.95));
+            border: 1px solid var(--border-subtle); border-radius: var(--radius);
+            padding: 20px 24px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.3), 0 0 40px rgba(0,194,255,0.04);
+            transition: all 0.3s ease;
+        }
+        .kpi-card:hover {
+            border-color: var(--border-hover); transform: translateY(-3px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 60px rgba(0,194,255,0.08);
+        }
+        .kpi-label {
+            font-size: 0.78rem; font-weight: 500; color: var(--text-muted);
+            letter-spacing: 0.5px; margin-bottom: 6px;
+        }
+        .kpi-value {
+            font-size: 1.7rem; font-weight: 700; color: #fff;
+        }
+
+        /* ─────────── Section Headers ─────────── */
+        .section-title {
+            font-size: 1.1rem; font-weight: 600; color: var(--text-primary);
+            margin: 24px 0 12px; display: flex; align-items: center; gap: 8px;
+        }
+
+        /* ─────────── Chart Containers ─────────── */
+        .chart-container {
+            background: var(--bg-card); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius); padding: 16px; margin-bottom: 16px;
+            transition: border-color 0.2s;
+        }
+        .chart-container:hover { border-color: var(--border-hover); }
+
+        .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+        /* ─────────── Table ─────────── */
+        .anomaly-table-wrap {
+            background: var(--bg-card); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius); overflow: hidden;
+        }
+        .anomaly-table {
+            width: 100%; border-collapse: collapse; font-size: 0.82rem;
+        }
+        .anomaly-table th {
+            background: rgba(0,194,255,0.06); padding: 12px 16px; text-align: left;
+            font-weight: 600; font-size: 0.72rem; text-transform: uppercase;
+            letter-spacing: 0.8px; color: var(--text-muted);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .anomaly-table td {
+            padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.03);
+            color: var(--text-primary);
+        }
+        .anomaly-table tr:hover td { background: rgba(0,194,255,0.03); }
+
+        .badge-anomaly {
+            display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.7rem;
+            font-weight: 600; background: rgba(255,82,82,0.15); color: var(--accent-red);
+            border: 1px solid rgba(255,82,82,0.3);
+        }
+
+        /* ─────────── Footer ─────────── */
+        .footer-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 16px 0; margin-top: 8px; border-top: 1px solid var(--border-subtle);
+            font-size: 0.75rem; color: var(--text-dim);
+        }
+        .btn-download {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            color: #fff; border: none; border-radius: var(--radius-sm);
+            padding: 10px 28px; font-weight: 600; font-size: 0.82rem; cursor: pointer;
+            transition: all 0.3s; letter-spacing: 0.3px;
+        }
+        .btn-download:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,194,255,0.25); }
+
+        /* ─────────── Loading ─────────── */
+        .loading-overlay {
+            position: fixed; inset: 0; background: var(--bg-primary);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 9999; transition: opacity 0.5s;
+        }
+        .loading-overlay.fade-out { opacity: 0; pointer-events: none; }
+        .spinner {
+            width: 48px; height: 48px; border: 3px solid var(--border-subtle);
+            border-top-color: var(--accent-blue); border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ─────────── Responsive ─────────── */
+        @media (max-width: 1024px) {
+            .sidebar { display: none; }
+            .main-content { padding: 20px; }
+            .kpi-row { grid-template-columns: repeat(3, 1fr); }
+            .chart-row { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 600px) {
+            .kpi-row { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div style="text-align:center">
+        <div class="spinner"></div>
+        <p style="margin-top:16px; color:var(--text-muted); font-size:0.85rem;">Connecting to Azure…</p>
+    </div>
+</div>
+
+<div class="app-wrapper">
+
+    <!-- ═══════ SIDEBAR ═══════ -->
+    <aside class="sidebar">
+        <div>
+            <div class="sidebar-logo">⚡ <span>WattWise</span></div>
+        </div>
+
+        <div>
+            <h3>⚙️ Controls</h3>
+            <label for="refreshRate">🔄 Auto-Refresh (sec)</label>
+            <input type="range" id="refreshRate" min="3" max="30" value="5"
+                   oninput="document.getElementById('refreshVal').textContent = this.value + 's'">
+            <span id="refreshVal" style="font-size:0.8rem; color:var(--text-muted);">5s</span>
+        </div>
+
+        <div>
+            <h3>⏱ Time Filter</h3>
+            <label for="timeRange">Select Range</label>
+            <select id="timeRange">
+                <option value="5">Last 5 min</option>
+                <option value="15">Last 15 min</option>
+                <option value="60">Last 1 hour</option>
+                <option value="all" selected>All</option>
+            </select>
+        </div>
+
+        <div>
+            <h3>🔌 Device</h3>
+            <label for="deviceSelect">Select Device</label>
+            <select id="deviceSelect">
+                <option value="">Loading…</option>
+            </select>
+        </div>
+
+        <div class="sidebar-footer">WattWise v1.0 • Powered by Azure</div>
+    </aside>
+
+    <!-- ═══════ MAIN ═══════ -->
+    <main class="main-content">
+        <p class="main-title">⚡ WattWise Energy Monitoring</p>
+        <p class="sub-caption">Real-Time Analytics • ML Anomaly Detection • Cloud-Powered</p>
+        <div class="divider"></div>
+
+        <div id="statusBanner" class="status-banner status-ok">🟢 Loading…</div>
+
+        <!-- KPI Row -->
+        <div class="kpi-row">
+            <div class="kpi-card"><div class="kpi-label">⚡ Avg Power</div><div class="kpi-value" id="kpiAvgPower">—</div></div>
+            <div class="kpi-card"><div class="kpi-label">📈 Peak Power</div><div class="kpi-value" id="kpiPeakPower">—</div></div>
+            <div class="kpi-card"><div class="kpi-label">🚨 Anomalies</div><div class="kpi-value" id="kpiAnomalies">—</div></div>
+            <div class="kpi-card"><div class="kpi-label">🖥 Active Devices</div><div class="kpi-value" id="kpiDevices">—</div></div>
+            <div class="kpi-card"><div class="kpi-label">📊 Data Points</div><div class="kpi-value" id="kpiDataPoints">—</div></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Power Chart -->
+        <div class="section-title" id="powerTitle">📊 Power Usage</div>
+        <div class="chart-container"><div id="chartPower" style="height:380px;"></div></div>
+
+        <!-- Voltage & Current -->
+        <div class="section-title">⚡ Voltage & Current</div>
+        <div class="chart-row">
+            <div class="chart-container"><div id="chartVoltage" style="height:280px;"></div></div>
+            <div class="chart-container"><div id="chartCurrent" style="height:280px;"></div></div>
+        </div>
+
+        <!-- Device Distribution -->
+        <div class="section-title">📈 Power Distribution Across Devices</div>
+        <div class="chart-container"><div id="chartDistribution" style="height:350px;"></div></div>
+
+        <!-- Anomaly Table -->
+        <div class="section-title">🚨 Recent Anomalies</div>
+        <div class="anomaly-table-wrap" id="anomalyTableWrap"></div>
+
+        <!-- Footer -->
+        <div class="footer-bar">
+            <button class="btn-download" id="btnDownload" onclick="downloadCSV()">⬇ Download Data</button>
+            <span id="footerInfo">Loading…</span>
+        </div>
+    </main>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  WattWise Dashboard — Client-Side Logic
+// ═══════════════════════════════════════════════════════════════
+
+const API_URL = "/api";
+let allData = [];
+let refreshTimer = null;
+
+// ── Chart theme ──
+const DARK_LAYOUT = {
+    paper_bgcolor: "rgba(0,0,0,0)",
+    plot_bgcolor: "rgba(0,0,0,0)",
+    font: { family: "Inter, sans-serif", color: "#8b8fa3", size: 11 },
+    margin: { l: 48, r: 16, t: 8, b: 40 },
+    legend: { orientation: "h", y: 1.12, x: 1, xanchor: "right", font: { size: 11, color: "#8b8fa3" } },
+    xaxis: { gridcolor: "rgba(255,255,255,0.04)", tickfont: { size: 10, color: "#555" } },
+    yaxis: { gridcolor: "rgba(255,255,255,0.04)", tickfont: { size: 10, color: "#555" } },
+};
+
+// ── Natural sort helper ──
+function naturalSort(a, b) {
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+}
+
+// ── Fetch Data ──
+async function fetchData() {
+    try {
+        const res = await fetch(API_URL);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        allData = await res.json();
+        processAndRender();
+    } catch (err) {
+        console.error("Fetch error:", err);
+        document.getElementById("statusBanner").className = "status-banner status-alert";
+        document.getElementById("statusBanner").innerHTML = `🔴 Connection Error — ${err.message}`;
+    }
+}
+
+// ── Process & Render ──
+function processAndRender() {
+    const overlay = document.getElementById("loadingOverlay");
+    if (overlay) overlay.classList.add("fade-out");
+
+    let data = [...allData];
+
+    // Time filter
+    const range = document.getElementById("timeRange").value;
+    if (range !== "all") {
+        const cutoff = new Date(Date.now() - parseInt(range) * 60000);
+        data = data.filter(d => new Date(d.timestamp) > cutoff);
+    }
+
+    if (data.length === 0) {
+        document.getElementById("statusBanner").className = "status-banner status-alert";
+        document.getElementById("statusBanner").innerHTML = "⏳ No data available. Start the simulator.";
+        return;
+    }
+
+    // Sort by time
+    data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    // ── Populate device selector ──
+    const devices = [...new Set(data.map(d => d.device).filter(Boolean))].sort(naturalSort);
+    const sel = document.getElementById("deviceSelect");
+    const prev = sel.value;
+    sel.innerHTML = devices.map(d => `<option value="${d}">${d}</option>`).join("");
+    if (prev && devices.includes(prev)) sel.value = prev;
+
+    const device = sel.value;
+    const filtered = data.filter(d => d.device === device);
+    const anomalies = data.filter(d => d.ml_anomaly);
+    const filteredAnomalies = filtered.filter(d => d.ml_anomaly);
+
+    // ── Status Banner ──
+    const rate = data.length > 0 ? anomalies.length / data.length : 0;
+    const banner = document.getElementById("statusBanner");
+    if (rate > 0.1) {
+        banner.className = "status-banner status-alert";
+        banner.innerHTML = `🔴 HIGH ANOMALY RATE — ${(rate * 100).toFixed(1)}% of readings flagged`;
+    } else {
+        banner.className = "status-banner status-ok";
+        banner.innerHTML = `🟢 System Operating Normally — ${(rate * 100).toFixed(1)}% anomaly rate`;
+    }
+
+    // ── KPIs ──
+    const powers = data.map(d => parseFloat(d.power_kw)).filter(v => !isNaN(v));
+    document.getElementById("kpiAvgPower").textContent = powers.length ? (powers.reduce((a,b)=>a+b,0)/powers.length).toFixed(2) + " kW" : "N/A";
+    document.getElementById("kpiPeakPower").textContent = powers.length ? Math.max(...powers).toFixed(2) + " kW" : "N/A";
+    document.getElementById("kpiAnomalies").textContent = anomalies.length;
+    document.getElementById("kpiDevices").textContent = devices.length;
+    document.getElementById("kpiDataPoints").textContent = data.length.toLocaleString();
+
+    // ── Power Chart ──
+    document.getElementById("powerTitle").textContent = `📊 Power Usage — ${device}`;
+    const ts = filtered.map(d => d.timestamp);
+    const pw = filtered.map(d => parseFloat(d.power_kw));
+
+    // Rolling average (window 10)
+    const rolling = pw.map((_, i, arr) => {
+        const start = Math.max(0, i - 9);
+        const slice = arr.slice(start, i + 1);
+        return slice.reduce((a, b) => a + b, 0) / slice.length;
+    });
+
+    const anomTs = filteredAnomalies.map(d => d.timestamp);
+    const anomPw = filteredAnomalies.map(d => parseFloat(d.power_kw));
+
+    Plotly.react("chartPower", [
+        { x: ts, y: pw, type: "scatter", mode: "lines", name: "Power (kW)",
+          line: { width: 2, color: "#00c2ff" }, fill: "tozeroy", fillcolor: "rgba(0,194,255,0.06)" },
+        { x: ts, y: rolling, type: "scatter", mode: "lines", name: "Rolling Avg",
+          line: { dash: "dash", width: 2, color: "#7b61ff" } },
+        { x: anomTs, y: anomPw, type: "scatter", mode: "markers", name: "Anomaly",
+          marker: { size: 10, color: "#ff5252", symbol: "x", line: { width: 2, color: "#ff8a80" } } }
+    ], { ...DARK_LAYOUT, xaxis: { ...DARK_LAYOUT.xaxis, title: "Time" },
+         yaxis: { ...DARK_LAYOUT.yaxis, title: "Power (kW)" } },
+    { responsive: true, displayModeBar: false });
+
+    // ── Voltage Chart ──
+    const fv = filtered.map(d => parseFloat(d.voltage)).filter(v => !isNaN(v));
+    Plotly.react("chartVoltage", [
+        { x: ts.slice(0, fv.length), y: fv, type: "scatter", mode: "lines",
+          line: { width: 2, color: "#ffd600" }, fill: "tozeroy", fillcolor: "rgba(255,214,0,0.06)" }
+    ], { ...DARK_LAYOUT, yaxis: { ...DARK_LAYOUT.yaxis, title: "Voltage (V)" }, showlegend: false },
+    { responsive: true, displayModeBar: false });
+
+    // ── Current Chart ──
+    const fc = filtered.map(d => parseFloat(d.current_a)).filter(v => !isNaN(v));
+    Plotly.react("chartCurrent", [
+        { x: ts.slice(0, fc.length), y: fc, type: "scatter", mode: "lines",
+          line: { width: 2, color: "#00e676" }, fill: "tozeroy", fillcolor: "rgba(0,230,118,0.06)" }
+    ], { ...DARK_LAYOUT, yaxis: { ...DARK_LAYOUT.yaxis, title: "Current (A)" }, showlegend: false },
+    { responsive: true, displayModeBar: false });
+
+    // ── Device Distribution ──
+    const devMap = {};
+    data.forEach(d => {
+        if (!devMap[d.device]) devMap[d.device] = { sum: 0, max: 0, count: 0 };
+        const p = parseFloat(d.power_kw);
+        if (!isNaN(p)) { devMap[d.device].sum += p; devMap[d.device].count++; devMap[d.device].max = Math.max(devMap[d.device].max, p); }
+    });
+    const devArr = Object.entries(devMap).map(([k, v]) => ({ device: k, avg: v.sum / v.count }))
+        .sort((a, b) => a.avg - b.avg);
+
+    Plotly.react("chartDistribution", [
+        { y: devArr.map(d => d.device), x: devArr.map(d => d.avg), type: "bar", orientation: "h",
+          marker: { color: devArr.map(d => d.avg),
+                    colorscale: [[0,"#00c2ff"],[0.5,"#7b61ff"],[1,"#ff5252"]] },
+          text: devArr.map(d => d.avg.toFixed(2)), textposition: "outside",
+          textfont: { color: "#8b8fa3", size: 10 } }
+    ], { ...DARK_LAYOUT, xaxis: { ...DARK_LAYOUT.xaxis, title: "Avg Power (kW)" },
+         yaxis: { ...DARK_LAYOUT.yaxis, title: "" },
+         height: Math.max(250, devArr.length * 35), showlegend: false },
+    { responsive: true, displayModeBar: false });
+
+    // ── Anomaly Table ──
+    const wrap = document.getElementById("anomalyTableWrap");
+    if (filteredAnomalies.length === 0) {
+        wrap.innerHTML = `<div style="padding:24px; text-align:center; color:var(--accent-green); font-weight:500;">
+            ✅ No anomalies detected for <strong>${device}</strong>.</div>`;
+    } else {
+        const rows = filteredAnomalies.slice(-15).reverse().map(d => `
+            <tr>
+                <td>${new Date(d.timestamp).toLocaleString()}</td>
+                <td>${d.device}</td>
+                <td>${parseFloat(d.power_kw).toFixed(2)}</td>
+                <td>${parseFloat(d.voltage).toFixed(1)}</td>
+                <td>${parseFloat(d.current_a).toFixed(2)}</td>
+                <td><span class="badge-anomaly">anomaly</span></td>
+            </tr>`).join("");
+        wrap.innerHTML = `<table class="anomaly-table">
+            <thead><tr><th>Timestamp</th><th>Device</th><th>Power (kW)</th><th>Voltage (V)</th><th>Current (A)</th><th>Status</th></tr></thead>
+            <tbody>${rows}</tbody></table>`;
+    }
+
+    // ── Footer ──
+    document.getElementById("footerInfo").textContent =
+        `📋 ${data.length} records • Last updated: ${new Date().toISOString().slice(0, 19)} UTC`;
+}
+
+// ── Download CSV ──
+function downloadCSV() {
+    if (!allData.length) return;
+    const cols = ["timestamp","device","power_kw","voltage","current_a","temperature_c","occupancy","ml_anomaly"];
+    let csv = cols.join(",") + "\n";
+    allData.forEach(d => { csv += cols.map(c => d[c] ?? "").join(",") + "\n"; });
+    const blob = new Blob([csv], { type: "text/csv" });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+    a.download = "wattwise_telemetry.csv"; a.click();
+}
+
+// ── Auto-refresh loop ──
+function startRefresh() {
+    clearInterval(refreshTimer);
+    const sec = parseInt(document.getElementById("refreshRate").value) || 5;
+    refreshTimer = setInterval(fetchData, sec * 1000);
+}
+
+// ── Event listeners ──
+document.getElementById("refreshRate").addEventListener("change", startRefresh);
+document.getElementById("timeRange").addEventListener("change", processAndRender);
+document.getElementById("deviceSelect").addEventListener("change", processAndRender);
+
+// ── Boot ──
+fetchData();
+startRefresh();
+</script>
+</body>
+</html>
